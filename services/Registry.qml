@@ -13,12 +13,14 @@ Singleton {
     property var entries: []
     property string error: ""
     property string status: "idle"
-    property bool busy: fetcher.running || installer.running
+    property bool busy: fetcher.running || installer.running || batchActive || shellRestart.running
     property var updateQueue: []
     property bool batchActive: false
     property int batchTotal: 0
     property int batchDone: 0
     property int batchFailed: 0
+    property var batchErrors: []
+    property bool autoUpdateAttempted: false
     property bool autoUpdate: false
     property bool automaticRun: false
     property int revision: 0
@@ -37,7 +39,7 @@ Singleton {
     }
 
     function fetch() {
-        if (fetcher.running || !plugin)
+        if (busy || !plugin)
             return
         error = ""
         lastMessage = ""
@@ -47,14 +49,21 @@ Singleton {
     }
 
     function install(entry) {
-        if (!entry || installer.running)
-            return
+        if (!entry || !plugin || busy)
+            return false
+        return startInstall(entry)
+    }
+
+    function startInstall(entry) {
+        if (!entry || !plugin || installer.running || fetcher.running)
+            return false
         error = ""
         lastMessage = ""
         status = "installing"
         installer.command = ["python3", plugin.dir + "/scripts/community-store.py", "install",
                              entry.source || "", entry.id || "", entry.version || ""]
         installer.running = true
+        return true
     }
 
     // Reinstalling deliberately goes through the same verified installer. The
@@ -71,20 +80,21 @@ Singleton {
     }
 
     function maybeAutoUpdate() {
-        if (!autoUpdate || busy || batchActive || automaticRun)
+        if (!autoUpdate || busy || Plugins.scanning || automaticRun || autoUpdateAttempted)
             return
-        automaticRun = true
+        autoUpdateAttempted = true
         updateAllPlugins(true)
     }
 
     function updateAllPlugins(automatic) {
-        if (busy)
+        if (busy || !plugin || Plugins.scanning)
             return
         automaticRun = automatic === true
         updateQueue = entries.filter(p => p.id !== "community-store" && installed(p.id) && newer(version(p.id), p.version))
         batchTotal = updateQueue.length
         batchDone = 0
         batchFailed = 0
+        batchErrors = []
         batchActive = batchTotal > 0
         if (batchActive)
             installNext()
@@ -94,7 +104,9 @@ Singleton {
 
     function installNext() {
         if (updateQueue.length === 0) {
-            status = "ready"
+            status = batchFailed > 0 ? "error" : "ready"
+            error = batchErrors.join("\n")
+            lastMessage = "Обновлено: " + (batchDone - batchFailed) + "/" + batchTotal
             batchActive = false
             automaticRun = false
             if (batchDone > batchFailed)
@@ -103,10 +115,12 @@ Singleton {
         }
         const entry = updateQueue[0]
         updateQueue = updateQueue.slice(1)
-        install(entry)
+        startInstall(entry)
     }
 
     function uninstall(id) {
+        if (busy)
+            return false
         // Community Store is the manager itself. Removing it would make the
         // settings page and all recovery actions disappear until a manual
         // reinstall, so it is intentionally never removable from the store.
@@ -115,7 +129,7 @@ Singleton {
             return false
         }
         Plugins.remove(id)
-        Plugins.reload()
+        // Plugins reloads after its asynchronous move has completed.
         touch()
         return true
     }
@@ -143,7 +157,7 @@ Singleton {
 
     function setRegistry(value) {
         const next = String(value || "").trim()
-        if (!next || !next.startsWith("https://"))
+        if (busy || !next || !next.startsWith("https://"))
             return false
         url = next
         if (plugin)
@@ -155,6 +169,14 @@ Singleton {
     function touch() {
         revision++
         changed()
+    }
+
+    Connections {
+        target: Plugins
+        function onScanningChanged() {
+            if (!Plugins.scanning && root.status === "ready")
+                root.maybeAutoUpdate()
+        }
     }
 
     Process {
@@ -173,6 +195,7 @@ Singleton {
                     throw new Error("Unsupported registry format")
                 root.entries = payload.plugins.filter(p => p && p.status === "approved" && typeof p.id === "string" && typeof p.name === "string" && typeof p.source === "string")
                 root.status = "ready"
+                root.autoUpdateAttempted = false
                 root.touch()
                 root.maybeAutoUpdate()
             } catch (e) {
@@ -196,8 +219,10 @@ Singleton {
             root.operationFinished(code === 0, message)
             if (root.batchActive) {
                 root.batchDone++
-                if (code !== 0)
+                if (code !== 0) {
                     root.batchFailed++
+                    root.batchErrors = root.batchErrors.concat([installer.command[4] + ": " + root.error])
+                }
                 nextInstall.start()
             } else if (code === 0) {
                 shellRestart.restart()

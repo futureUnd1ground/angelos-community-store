@@ -323,14 +323,14 @@ Column {
         page.registryInput = plugin ? plugin.get("registryUrl", Registry.defaultUrl) : Registry.defaultUrl
         Registry.plugin = plugin
         Registry.url = page.registryInput
-        Registry.setAutoUpdate(page.autoUpdate)
         Registry.fetch()
+        Registry.setAutoUpdate(page.autoUpdate)
     }
 
     function matches(entry) {
         const q = page.search.trim().toLowerCase()
         const hay = [entry.name, entry.author, entry.description, ...(entry.tags || [])].join(" ").toLowerCase()
-        return (!q || hay.includes(q)) && (page.category === "All" || (entry.tags || []).map(t => String(t).toLowerCase()).includes(page.category.toLowerCase()))
+        return (!q || hay.includes(q)) && (page.category === "All" || String(entry.category || "").toLowerCase() === page.category.toLowerCase() || (entry.tags || []).map(t => String(t).toLowerCase()).includes(page.category.toLowerCase()))
     }
 
     function setAutoUpdate(value) {

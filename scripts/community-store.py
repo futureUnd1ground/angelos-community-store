@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Small, dependency-free registry and installer for Community Store."""
-import json, os, shutil, sys, tempfile, time, urllib.parse, urllib.request, zipfile
+import fcntl, json, os, shutil, sys, tempfile, time, urllib.error, urllib.parse, urllib.request, uuid, zipfile
 from pathlib import Path
 
 MAX_REGISTRY = 2 * 1024 * 1024
@@ -24,25 +24,55 @@ def fetch(url):
     if len(data) > MAX_REGISTRY:
         return fail("Registry is too large")
     payload = json.loads(data.decode("utf-8"))
-    if payload.get("version") != 1 or not isinstance(payload.get("plugins"), list):
+    if not isinstance(payload, dict) or payload.get("version") != 1 or not isinstance(payload.get("plugins"), list):
         return fail("Unsupported registry format")
+    seen = set()
     for entry in payload["plugins"]:
-        if not isinstance(entry, dict) or not ID.fullmatch(str(entry.get("id", ""))) or not str(entry.get("source", "")).startswith("https://"):
+        if not isinstance(entry, dict):
             return fail("Registry contains an invalid plugin entry")
+        plugin_id = entry.get("id")
+        if not isinstance(plugin_id, str) or not ID.fullmatch(plugin_id) or plugin_id in seen:
+            return fail("Registry contains an invalid or duplicate plugin id")
+        seen.add(plugin_id)
+        for field in ("name", "version", "source"):
+            if not isinstance(entry.get(field), str) or not entry[field].strip():
+                return fail("Registry plugin " + plugin_id + " has an invalid " + field)
+        if not entry["source"].startswith("https://"):
+            return fail("Registry contains a non-HTTPS source")
+        for field in ("author", "description", "category", "repository", "homepage", "icon", "status"):
+            if field in entry and not isinstance(entry[field], str):
+                return fail("Registry plugin " + plugin_id + " has an invalid " + field)
+        for field in ("tags", "dependencies", "permissions"):
+            if field in entry and (not isinstance(entry[field], list) or not all(isinstance(value, str) for value in entry[field])):
+                return fail("Registry plugin " + plugin_id + " has an invalid " + field)
     print(json.dumps(payload, ensure_ascii=False))
     return 0
 
 def install(source, expected_id, expected_version):
     if not ID.fullmatch(expected_id) or not source.startswith("https://"):
         return fail("Invalid plugin id or source")
+    parent = Path.home() / ".config/angelos/plugins"
+    parent.mkdir(parents=True, exist_ok=True)
+    # Serialize GUI, launcher and TUI installs of the same plugin.
+    with (parent / ("." + expected_id + ".install.lock")).open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return fail("Another installation of " + expected_id + " is running")
+        return install_locked(source, expected_id, expected_version)
+
+
+def install_locked(source, expected_id, expected_version):
     request = urllib.request.Request(source, headers={"User-Agent": "angelos-community-store/0.1"})
     with urllib.request.urlopen(request, timeout=60) as response:
         data = response.read(MAX_ARCHIVE + 1)
     if len(data) > MAX_ARCHIVE:
         return fail("Plugin archive is too large")
-    home = Path(os.environ.get("HOME", "")).expanduser()
+    home = Path.home()
     destination = home / ".config/angelos/plugins" / expected_id
     trash = home / ".local/state/angelos/plugin-trash"
+    if destination.is_symlink():
+        return fail("Refusing to replace a symbolic-link plugin directory")
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".community-store-", dir=destination.parent) as work:
         archive = Path(work) / "plugin.zip"
@@ -60,6 +90,10 @@ def install(source, expected_id, expected_version):
                 if not str(target).startswith(str(root.resolve()) + os.sep):
                     return fail("Archive contains an unsafe path")
             zf.extractall(root)
+            for member in zf.infolist():
+                target = root / member.filename
+                if target.is_file():
+                    target.chmod(target.stat().st_mode | ((member.external_attr >> 16) & 0o111))
         manifests = list(root.glob("manifest.json")) + list(root.glob("*/manifest.json"))
         if len(manifests) != 1:
             return fail("Archive must contain one manifest.json")
@@ -74,29 +108,40 @@ def install(source, expected_id, expected_version):
             return fail("Manifest version does not match registry")
         if not isinstance(manifest.get("name"), str) or not manifest["name"].strip():
             return fail("Manifest name is required")
-        staging = destination.parent / ("." + expected_id + ".new-" + str(os.getpid()))
-        if staging.exists():
-            shutil.rmtree(staging)
+        staging = Path(work) / "staged"
         shutil.copytree(source_dir, staging)
         backup = None
         try:
             if destination.exists():
-                trash.mkdir(parents=True, exist_ok=True)
-                backup = trash / ("community-store-" + expected_id + "-" + str(os.getpid()))
+                # Rollback must stay on the same filesystem as the plugin.
+                backup = destination.parent / ("." + expected_id + ".previous-" + uuid.uuid4().hex)
                 os.replace(destination, backup)
             os.replace(staging, destination)
         except Exception:
             if backup is not None and backup.exists() and not destination.exists():
                 os.replace(backup, destination)
             raise
+        if backup is not None:
+            try:
+                trash.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(backup), str(trash / backup.name.lstrip(".")))
+            except OSError:
+                # The installation succeeded; retain the backup if trash is unavailable.
+                print("Previous plugin retained at " + str(backup), file=sys.stderr)
     print("Installed " + expected_id + " " + expected_version)
     return 0
 
+def main(args=None):
+    args = sys.argv[1:] if args is None else args
+    try:
+        if len(args) == 2 and args[0] == "fetch":
+            return fetch(args[1])
+        if len(args) == 4 and args[0] == "install":
+            return install(args[1], args[2], args[3])
+        return fail("Usage: community-store.py fetch URL | install SOURCE ID VERSION")
+    except (OSError, ValueError, urllib.error.URLError, zipfile.BadZipFile, RuntimeError) as exc:
+        return fail("Community Store: " + str(exc))
+
+
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        raise SystemExit(fail("Usage: community-store.py fetch URL | install SOURCE ID VERSION"))
-    if sys.argv[1] == "fetch" and len(sys.argv) == 3:
-        raise SystemExit(fetch(sys.argv[2]))
-    if sys.argv[1] == "install" and len(sys.argv) == 5:
-        raise SystemExit(install(sys.argv[2], sys.argv[3], sys.argv[4]))
-    raise SystemExit(fail("Invalid arguments"))
+    raise SystemExit(main())
