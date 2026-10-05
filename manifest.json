@@ -1,12 +1,13 @@
 {
   "id": "community-store",
   "name": "Community Store",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "author": "AngelOS community",
   "description": "Find, install, update and remove community plugins.",
   "icon": "package",
   "enabledByDefault": true,
   "settings": "Settings.qml",
   "main": "Main.qml",
-  "launcher": "Launcher.qml"
+  "launcher": "Launcher.qml",
+  "repository": "https://github.com/futureUnd1ground/angelos-community-store"
 }
