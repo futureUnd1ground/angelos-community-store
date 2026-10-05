@@ -3,11 +3,13 @@
 import curses
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import time
 import urllib.parse
+import uuid
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -28,19 +30,34 @@ def ensure_launcher():
         LAUNCHER.chmod(0o755)
 
 
+def display_text(value, default):
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for candidate in [value.get("en"), value.get("ru"), *value.values()]:
+            if isinstance(candidate, str) and candidate:
+                return candidate
+    return default
+
+
 def installed_plugins():
     found = {}
     if not PLUGIN_DIR.is_dir():
         return found
     for folder in PLUGIN_DIR.iterdir():
         manifest_path = folder / "manifest.json"
-        if not folder.is_dir() or not manifest_path.is_file():
+        if folder.name.startswith(".") or folder.is_symlink() or not folder.is_dir() or not manifest_path.is_file():
             continue
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if not isinstance(manifest, dict):
+                continue
             plugin_id = manifest.get("id", folder.name)
-            if isinstance(plugin_id, str):
+            if isinstance(plugin_id, str) and re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,63}", plugin_id) and plugin_id == folder.name:
                 manifest["_path"] = folder
+                manifest["name"] = display_text(manifest.get("name"), plugin_id)
+                manifest["description"] = display_text(manifest.get("description"), "")
+                manifest["author"] = display_text(manifest.get("author"), "Unknown")
                 found[plugin_id] = manifest
         except (OSError, ValueError):
             continue
@@ -51,7 +68,8 @@ def registry_url():
     settings_path = HOME / ".config/angelos/settings.json"
     try:
         data = json.loads(settings_path.read_text(encoding="utf-8"))
-        return data.get("plugins", {}).get("data", {}).get("community-store", {}).get("registryUrl", DEFAULT_REGISTRY)
+        value = data.get("plugins", {}).get("data", {}).get("community-store", {}).get("registryUrl", DEFAULT_REGISTRY)
+        return value if isinstance(value, str) and value.startswith("https://") else DEFAULT_REGISTRY
     except (OSError, ValueError, AttributeError):
         return DEFAULT_REGISTRY
 
@@ -71,7 +89,10 @@ def fetch_registry():
 
 def version_tuple(value):
     try:
-        return tuple(int(part) for part in str(value).split("."))
+        parts = [int(part) for part in str(value).split(".")]
+        while len(parts) > 1 and parts[-1] == 0:
+            parts.pop()
+        return tuple(parts)
     except ValueError:
         return (0,)
 
@@ -113,14 +134,20 @@ def install(row):
 
 def remove(row):
     plugin_id = row["entry"]["id"]
+    if plugin_id == "community-store":
+        raise RuntimeError("Community Store cannot remove itself")
+    if not isinstance(plugin_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,63}", plugin_id):
+        raise RuntimeError("Invalid plugin id")
     folder = PLUGIN_DIR / plugin_id
+    if folder.is_symlink():
+        raise RuntimeError("Symbolic-link plugin directories cannot be removed here")
     local = row.get("installed")
     if not local or not folder.is_dir():
         raise RuntimeError("Only user-installed plugins can be removed here")
     TRASH_DIR.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    target = TRASH_DIR / (stamp + "-" + plugin_id)
-    os.replace(folder, target)
+    target = TRASH_DIR / (stamp + "-" + plugin_id + "-" + uuid.uuid4().hex)
+    shutil.move(str(folder), str(target))
     return "Moved to AngelOS plugin trash: " + target.name
 
 

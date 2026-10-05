@@ -131,7 +131,7 @@ PxBox {
                 visible: !card.isStore
                 text: card.confirmingRemove ? "Подтвердить" : (card.entry && card.entry.bundled ? "Скрыть" : "Удалить")
                 icon: "trash"
-                enabled: !!card.entry
+                enabled: !!card.entry && !Registry.busy
                 onClicked: {
                     if (!card.confirmingRemove) {
                         card.confirmingRemove = true
