@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import qs.config
 import qs.widgets
 import "../services"
@@ -13,6 +14,7 @@ PxBox {
         return entry ? Registry.installed(entry.id) : null
     }
     readonly property bool isStore: !!entry && entry.id === "community-store"
+    readonly property string repositoryUrl: entry ? String(entry.repository || entry.homepage || (entry.id === "community-store" ? "https://github.com/futureUnd1ground/angelos-community-store" : "")) : ""
     property bool confirmingRemove: false
     property bool confirmingReinstall: false
     signal openDetails(var entry)
@@ -132,8 +134,8 @@ PxBox {
                 compact: true
                 text: "Подробнее"
                 icon: "info"
-                enabled: !!card.entry
-                onClicked: card.openDetails(card.entry)
+                enabled: card.repositoryUrl !== ""
+                onClicked: Quickshell.execDetached(["xdg-open", card.repositoryUrl])
             }
         }
     }

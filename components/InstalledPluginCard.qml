@@ -16,6 +16,7 @@ PxBox {
     }
     readonly property bool updateAvailable: !!catalogEntry && Registry.newer(String(entry.version || "0"), String(catalogEntry.version || "0"))
     readonly property bool isStore: !!entry && entry.id === "community-store"
+    readonly property string repositoryUrl: entry ? String((catalogEntry && (catalogEntry.repository || catalogEntry.homepage)) || entry.repository || entry.homepage || (entry.id === "community-store" ? "https://github.com/futureUnd1ground/angelos-community-store" : "")) : ""
     property bool confirmingRemove: false
     property bool confirmingReinstall: false
     signal showDetails(var entry)
@@ -89,8 +90,8 @@ PxBox {
                 compact: true
                 text: "Подробнее"
                 icon: "info"
-                enabled: !!card.entry
-                onClicked: card.showDetails(card.entry)
+                enabled: card.repositoryUrl !== ""
+                onClicked: Quickshell.execDetached(["xdg-open", card.repositoryUrl])
             }
             PxButton {
                 compact: true
