@@ -4,7 +4,7 @@ import qs.config
 import qs.widgets
 import qs.services
 import "services"
-import "components"
+import "components" as Cards
 
 // PluginSettingsPage already provides the outer PxPage. Plugin settings must
 // therefore be a normal item with an implicit height.
@@ -112,7 +112,7 @@ Column {
 
                 Repeater {
                     model: Plugins.plugins
-                    InstalledPluginCard {
+                    Cards.InstalledPluginCard {
                         required property int index
                         property int rowIndex: index
                         entry: Plugins.plugins[rowIndex]
@@ -153,7 +153,7 @@ Column {
 
                 Repeater {
                     model: page.availableEntries
-                    PluginCard {
+                    Cards.PluginCard {
                         required property int index
                         property int rowIndex: index
                         entry: page.availableEntries[rowIndex]
