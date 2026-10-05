@@ -66,7 +66,7 @@ Item {
             }
             if (newer(installed.version, entry.version))
                 out.push({"id": "update:" + id, "title": "Update: " + label, "subtitle": "Installed v" + installed.version + " · latest v" + entry.version, "icon": entry.icon || "package", "score": score + 5})
-            if (!installed.bundled)
+            if (!installed.bundled && id !== "community-store")
                 out.push({"id": "remove:" + id, "title": "Remove: " + label, "subtitle": "Installed v" + (installed.version || "?"), "icon": "trash", "score": score})
         }
         return out.slice(0, 30)
@@ -81,6 +81,8 @@ Item {
         const pluginId = id.slice(id.indexOf(":") + 1)
         const entry = entries.find(item => item.id === pluginId)
         if (action === "remove") {
+            if (pluginId === "community-store")
+                return true
             Plugins.remove(pluginId)
             changed()
             return true

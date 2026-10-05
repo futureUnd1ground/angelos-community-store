@@ -19,6 +19,10 @@ Singleton {
     property int batchTotal: 0
     property int batchDone: 0
     property int batchFailed: 0
+    property bool autoUpdate: false
+    property bool automaticRun: false
+    property int revision: 0
+    property string lastMessage: ""
     readonly property var storeEntry: entries.find(p => p.id === "community-store") || null
     readonly property int availablePluginUpdates: entries.filter(p => p.id !== "community-store" && installed(p.id) && newer(version(p.id), p.version)).length
     readonly property bool storeUpdateAvailable: !!storeEntry && !!installed("community-store") && newer(version("community-store"), storeEntry.version)
@@ -33,11 +37,12 @@ Singleton {
     }
 
     function fetch() {
-        if (fetcher.running)
+        if (fetcher.running || !plugin)
             return
         error = ""
+        lastMessage = ""
         status = "loading"
-        fetcher.command = ["python3", plugin.dir + "/scripts/community-store.py", "fetch", url]
+        fetcher.command = ["python3", plugin.dir + "/scripts/community-store.py", "fetch", url || defaultUrl]
         fetcher.running = true
     }
 
@@ -45,15 +50,37 @@ Singleton {
         if (!entry || installer.running)
             return
         error = ""
+        lastMessage = ""
         status = "installing"
         installer.command = ["python3", plugin.dir + "/scripts/community-store.py", "install",
                              entry.source || "", entry.id || "", entry.version || ""]
         installer.running = true
     }
 
-    function updateAllPlugins() {
+    // Reinstalling deliberately goes through the same verified installer. The
+    // Python helper stages the archive and moves the old copy to plugin-trash
+    // before replacing it, so a failed download leaves the working plugin intact.
+    function reinstall(entry) {
+        install(entry)
+    }
+
+    function setAutoUpdate(value) {
+        autoUpdate = !!value
+        if (autoUpdate && status === "ready")
+            maybeAutoUpdate()
+    }
+
+    function maybeAutoUpdate() {
+        if (!autoUpdate || busy || batchActive || automaticRun)
+            return
+        automaticRun = true
+        updateAllPlugins(true)
+    }
+
+    function updateAllPlugins(automatic) {
         if (busy)
             return
+        automaticRun = automatic === true
         updateQueue = entries.filter(p => p.id !== "community-store" && installed(p.id) && newer(version(p.id), p.version))
         batchTotal = updateQueue.length
         batchDone = 0
@@ -61,12 +88,15 @@ Singleton {
         batchActive = batchTotal > 0
         if (batchActive)
             installNext()
+        else
+            automaticRun = false
     }
 
     function installNext() {
         if (updateQueue.length === 0) {
             status = "ready"
             batchActive = false
+            automaticRun = false
             if (batchDone > batchFailed)
                 shellRestart.restart()
             return
@@ -77,9 +107,17 @@ Singleton {
     }
 
     function uninstall(id) {
+        // Community Store is the manager itself. Removing it would make the
+        // settings page and all recovery actions disappear until a manual
+        // reinstall, so it is intentionally never removable from the store.
+        if (String(id || "") === "community-store") {
+            lastMessage = "Community Store нельзя удалить из самого магазина."
+            return false
+        }
         Plugins.remove(id)
         Plugins.reload()
-        changed()
+        touch()
+        return true
     }
 
     function installed(id) {
@@ -108,9 +146,15 @@ Singleton {
         if (!next || !next.startsWith("https://"))
             return false
         url = next
-        plugin.set("registryUrl", next)
+        if (plugin)
+            plugin.set("registryUrl", next)
         fetch()
         return true
+    }
+
+    function touch() {
+        revision++
+        changed()
     }
 
     Process {
@@ -129,7 +173,8 @@ Singleton {
                     throw new Error("Unsupported registry format")
                 root.entries = payload.plugins.filter(p => p && p.status === "approved" && typeof p.id === "string" && typeof p.name === "string" && typeof p.source === "string")
                 root.status = "ready"
-                root.changed()
+                root.touch()
+                root.maybeAutoUpdate()
             } catch (e) {
                 root.status = "error"
                 root.error = String(e)
@@ -145,8 +190,9 @@ Singleton {
             const message = (code === 0 ? installOutput.text : installError.text).trim()
             root.status = code === 0 ? "ready" : "error"
             root.error = code === 0 ? "" : (message || "Installation failed.")
+            root.lastMessage = message
             Plugins.reload()
-            root.changed()
+            root.touch()
             root.operationFinished(code === 0, message)
             if (root.batchActive) {
                 root.batchDone++
