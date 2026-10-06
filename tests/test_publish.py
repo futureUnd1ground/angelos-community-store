@@ -52,7 +52,10 @@ class PublishTests(unittest.TestCase):
 
     def gh(self, *args):
         self.commands.append(('gh', args))
-        if args[:2] == ('pr', 'list'): return json.dumps(self.old_prs)
+        if args[:2] == ('pr', 'list'):
+            self.assertNotIn(':', args[args.index('--head') + 1])
+            self.assertEqual(args[args.index('--author') + 1], 'alice')
+            return json.dumps(self.old_prs)
         if args[:2] == ('release', 'create'):
             self.release_created = True
             self.assertEqual(Path(args[3]).read_bytes(), self.path.read_bytes())
@@ -76,6 +79,12 @@ class PublishTests(unittest.TestCase):
         self.old_prs = [{'state': 'OPEN', 'url': 'https://github.com/test/pull/1'}]
         result = publisher.publish(str(self.path))
         self.assertEqual(result['url'], self.old_prs[0]['url'])
+        self.assertEqual(len(self.commands), 1)
+
+    def test_retry_after_merge_returns_published_pr_without_writes(self):
+        self.old_prs = [{'state': 'MERGED', 'url': 'https://github.com/test/pull/1'}]
+        result = publisher.publish(str(self.path))
+        self.assertEqual(result['message'], 'Плагин уже опубликован.')
         self.assertEqual(len(self.commands), 1)
 
     def test_closed_pr_requires_new_version(self):

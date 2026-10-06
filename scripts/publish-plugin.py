@@ -188,13 +188,13 @@ def publish(source):
         if existing and existing.get('repository', '').rstrip('/').lower() != ('https://github.com/' + repo).lower():
             raise ValueError('Этот ID уже занят другим плагином в реестре.')
         branch = 'publish-' + manifest['id'] + '-' + manifest['version'] + '-' + digest[:12]
-        prs = json.loads(gh('pr', 'list', '--repo', REGISTRY, '--head', login + ':' + branch,
+        prs = json.loads(gh('pr', 'list', '--repo', REGISTRY, '--head', branch, '--author', login,
                             '--state', 'all', '--json', 'url,state'))
         if prs:
             if prs[0]['state'] == 'CLOSED':
                 raise ValueError('Заявка этой версии закрыта. Исправь плагин и увеличь version.')
             return {'url': prs[0]['url'], 'id': manifest['id'], 'version': manifest['version'],
-                    'message': 'Заявка уже существует.'}
+                    'message': 'Плагин уже опубликован.' if prs[0]['state'] == 'MERGED' else 'Заявка уже существует.'}
         info = optional_api('repos/' + repo)
         if info is None:
             progress('Создаю публичный репозиторий исходников…')

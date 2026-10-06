@@ -1,7 +1,7 @@
 {
   "id": "community-store",
   "name": "Community Store",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "author": "AngelOS community",
   "description": "Find, install, update and publish community plugins from ZIP.",
   "icon": "package",
