@@ -54,6 +54,18 @@ Singleton {
         return startInstall(entry)
     }
 
+    function installLocal(source) {
+        const file = String(source || "").trim()
+        if (!file || !plugin || busy)
+            return false
+        error = ""
+        lastMessage = ""
+        status = "installing"
+        installer.command = ["python3", plugin.dir + "/scripts/community-store.py", "install-local", file]
+        installer.running = true
+        return true
+    }
+
     function startInstall(entry) {
         if (!entry || !plugin || installer.running || fetcher.running)
             return false

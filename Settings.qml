@@ -16,6 +16,7 @@ Column {
     property string search: ""
     property string category: "All"
     property string registryInput: ""
+    property string archiveInput: ""
     property var selected: null
     property var selectedInstalled: null
     property bool autoUpdate: plugin ? plugin.get("autoUpdate", false) : false
@@ -173,6 +174,55 @@ Column {
                     visible: !Registry.busy && page.availableEntries.length === 0
                     text: Registry.error ? "Не удалось загрузить registry." : "Плагины не найдены."
                     dim: true
+                }
+            }
+
+            PxGroup {
+                width: parent.width
+                title: "Установить из ZIP"
+                icon: "package"
+
+                PxBox {
+                    id: zipBox
+                    width: parent.width
+                    height: zipContent.implicitHeight + Theme.u * 12
+                    color: zipDrop.containsDrag ? Theme.faceAlt : Theme.sunken
+                    Column {
+                        id: zipContent
+                        x: Theme.u * 6
+                        y: Theme.u * 6
+                        width: parent.width - Theme.u * 12
+                        spacing: Theme.u * 3
+                        PxText {
+                            width: parent.width
+                            text: zipDrop.containsDrag ? "Отпусти ZIP здесь" : "Перетащи сюда ZIP-архив плагина"
+                            wrapMode: Text.Wrap
+                        }
+                        PxField {
+                            width: parent.width
+                            text: page.archiveInput
+                            placeholder: "/путь/к/плагину.zip"
+                            enabled: !Registry.busy
+                            onEdited: page.archiveInput = text
+                        }
+                    }
+                    Cards.ZipDropArea {
+                        id: zipDrop
+                        anchors.fill: parent
+                        enabled: !Registry.busy
+                        onFileSelected: url => {
+                            page.archiveInput = url
+                            page.operationMessage = "Архив выбран. Нажми «Установить ZIP»."
+                        }
+                        onRejected: message => page.operationMessage = message
+                    }
+                }
+                PxButton {
+                    compact: true
+                    icon: "download"
+                    text: Registry.status === "installing" ? "Установка…" : "Установить ZIP"
+                    enabled: !Registry.busy && page.archiveInput.trim() !== ""
+                    onClicked: Registry.installLocal(page.archiveInput)
                 }
             }
 

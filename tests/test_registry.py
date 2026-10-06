@@ -152,6 +152,20 @@ MATCHES
         verify(!Registry.install(Registry.entries[0]))
         verify(!Registry.testInstaller.running)
     }
+    function test_local_install_command_and_busy_guard() {
+        verify(Registry.installLocal("file:///tmp/plugin%20name.zip"))
+        compare(Registry.testInstaller.command, ["python3", "/test/scripts/community-store.py", "install-local", "file:///tmp/plugin%20name.zip"])
+        verify(!Registry.installLocal("file:///tmp/second.zip"))
+        complete(0, "Installed local-plugin 1.0.0")
+        verify(Registry.testRestart.running)
+    }
+    function test_local_failure_and_empty_source() {
+        verify(!Registry.installLocal("  "))
+        verify(Registry.installLocal("/tmp/broken.zip"))
+        complete(1, "Invalid manifest")
+        compare(Registry.error, "Invalid manifest")
+        verify(!Registry.testRestart.running)
+    }
     function test_category_uses_registry_field() {
         page.category = "Widgets"
         page.search = ""

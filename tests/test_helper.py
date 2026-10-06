@@ -138,6 +138,72 @@ class HelperTests(unittest.TestCase):
                 self.assertEqual(helper.main(['fetch', 'https://example.com/plugins.json']), 1)
         self.assertNotIn('Traceback', self.err.getvalue())
 
+    def local_install(self, data, filename="плагин с пробелами #1.zip"):
+        path = self.home / filename
+        path.write_bytes(data)
+        with patch.object(helper.urllib.request, 'urlopen') as network:
+            result = helper.main(['install-local', path.as_uri()])
+            network.assert_not_called()
+        return result
+
+    def test_local_zip_discovers_manifest_and_preserves_backup(self):
+        self.assertEqual(self.local_install(archive(version='2.0.0')), 0)
+        self.assertEqual(json.loads((self.target / 'manifest.json').read_text())['version'], '2.0.0')
+        self.assertTrue((self.target / 'run.sh').stat().st_mode & stat.S_IXUSR)
+        self.assertEqual(len(list((self.home / '.local/state/angelos/plugin-trash').glob('*/Main.qml'))), 1)
+
+    def test_local_nested_zip_and_plain_path(self):
+        data = io.BytesIO()
+        with zipfile.ZipFile(data, 'w') as zf:
+            zf.writestr('example/manifest.json', json.dumps(dict(id='example', name='Example', version='1.2.0')))
+            zf.writestr('example/Main.qml', 'nested')
+        path = self.home / 'example.ZIP'; path.write_bytes(data.getvalue())
+        self.assertEqual(helper.main(['install-local', str(path)]), 0)
+        self.assertEqual((self.target / 'Main.qml').read_text(), 'nested')
+
+    def test_local_invalid_archives_leave_installed_plugin_intact(self):
+        for data in [b'not a zip', archive({'../escape': 'bad'}), archive({'extra/manifest.json': '{}'})]:
+            with self.subTest(data=data[:10]):
+                self.assertEqual(self.local_install(data), 1)
+                self.assertEqual((self.target / 'Main.qml').read_text(), 'old content')
+        self.assertFalse(list(self.target.parent.glob('.community-store-*')))
+
+    def test_local_invalid_manifest_id_and_version(self):
+        for plugin_id, version in [('../outside', '1.0'), (None, '1.0'), ('example', ''), ('example', None)]:
+            data = io.BytesIO()
+            with zipfile.ZipFile(data, 'w') as zf:
+                zf.writestr('manifest.json', json.dumps(dict(id=plugin_id, name='Example', version=version)))
+            self.assertEqual(self.local_install(data.getvalue()), 1)
+        self.assertEqual((self.target / 'Main.qml').read_text(), 'old content')
+
+    def test_local_install_uses_shared_lock(self):
+        with (self.target.parent / '.example.install.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.assertEqual(self.local_install(archive()), 1)
+        self.assertEqual((self.target / 'Main.qml').read_text(), 'old content')
+
+    def test_local_oversized_archive_is_rejected(self):
+        with patch.object(helper, 'MAX_ARCHIVE', 10):
+            self.assertEqual(self.local_install(archive()), 1)
+        self.assertEqual((self.target / 'Main.qml').read_text(), 'old content')
+
+    def test_local_remote_urls_are_rejected(self):
+        with patch.object(helper.urllib.request, 'urlopen') as network:
+            for source in ['https://example.com/a.zip', 'file://otherhost/tmp/a.zip', '/tmp/not-a-zip.txt']:
+                self.assertEqual(helper.main(['install-local', source]), 1)
+            network.assert_not_called()
+
+    def test_local_failed_replacement_rolls_back(self):
+        replace = os.replace
+        def failing_replace(source, dest):
+            if Path(source).name == 'staged':
+                raise OSError('simulated disk failure')
+            return replace(source, dest)
+        with patch.object(helper.os, 'replace', side_effect=failing_replace):
+            self.assertEqual(self.local_install(archive()), 1)
+        self.assertEqual((self.target / 'Main.qml').read_text(), 'old content')
+
+
 
 class TuiTests(unittest.TestCase):
     def setUp(self):
