@@ -153,3 +153,9 @@ Use one primary category ID and tags for other applicable filters. The registry 
 Story collects stories, novels, quests, characters, realms, dialogue and voices. Ordinary pets and minigames require an explicit story tag to enter that filter. Themes collects appearance subcategories. Search supports both Russian and English category labels.
 
 Story example: `"category": "Story", "tags": ["story", "novel", "dialogue", "characters", "heaven"]`. Appearance example: `"category": "Skins", "tags": ["skins", "themes", "fonts", "cursor"]`. Category metadata does not load story content into the engine; plugin authors must implement integration through AngelOS's supported APIs and document compatibility and dependencies.
+
+## Install a local ZIP
+
+Open “Установить из ZIP” in Community Store settings, drop one ready plugin ZIP onto the field and click “Установить ZIP”. An absolute file path can also be pasted manually. The ID and version come from `manifest.json` at the archive root or inside a single plugin folder. AngelOS restarts the shell after successful installation to load the plugin components.
+
+Local installation works offline and shares archive size/path/symlink checks, per-plugin locking, backups and rollback with registry installation. Terminal usage: `python3 scripts/community-store.py install-local /path/plugin.zip`.
