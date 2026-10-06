@@ -45,7 +45,7 @@ def optional_api(path):
     try:
         return api(path)
     except CommandError as exc:
-        if 'HTTP 404' in exc.result.stderr:
+        if 'HTTP 404' in exc.result.stderr or ('HTTP 409' in exc.result.stderr and 'Git Repository is empty' in exc.result.stderr):
             return None
         raise
 

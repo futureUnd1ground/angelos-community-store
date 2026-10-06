@@ -112,6 +112,12 @@ class PublishTests(unittest.TestCase):
                 publisher.ensure_release('alice/example',self.root,self.path,self.manifest,self.digest,'alice')
         self.assertEqual(self.commands, [])
 
+    def test_empty_github_repo_has_no_release_yet(self):
+        import subprocess
+        result = subprocess.CompletedProcess([],1,stdout='',stderr='gh: Git Repository is empty. (HTTP 409)')
+        with patch.object(publisher,'api',side_effect=publisher.CommandError(result)):
+            self.assertIsNone(publisher.optional_api('repos/alice/new/releases/tags/v1.0.0'))
+
     def test_corrupt_zip_is_reported_without_traceback(self):
         self.path.write_bytes(b'broken')
         with patch.dict('os.environ',{'XDG_STATE_HOME':str(self.root / 'state')}):
