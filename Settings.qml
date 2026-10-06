@@ -5,6 +5,7 @@ import qs.widgets
 import qs.services
 import "services"
 import "components" as Cards
+import "Categories.js" as Categories
 
 // PluginSettingsPage already provides the outer PxPage. Plugin settings must
 // therefore be a normal item with an implicit height.
@@ -25,6 +26,7 @@ Column {
     property string operationMessage: ""
     property bool confirmingSelectedRemove: false
     readonly property var availableEntries: Registry.entries.filter(page.matches)
+    readonly property var installedEntries: Plugins.plugins.filter(entry => page.matches(Object.assign({}, entry, Registry.entries.find(r => r.id === entry.id) || {})))
 
     width: parent ? parent.width : Theme.u * 150
     spacing: Theme.u * 5
@@ -105,17 +107,39 @@ Column {
                 onEdited: page.search = text
             }
 
+            Flow {
+                width: parent.width
+                spacing: Theme.u * 2
+                PxButton {
+                    compact: true
+                    text: I18n.t("Все", "All")
+                    checked: page.category === "All"
+                    onClicked: page.category = "All"
+                }
+                Repeater {
+                    model: Categories.groups(Registry.entries)
+                    PxCombo {
+                        required property var modelData
+                        width: Math.min(Theme.u * 100, parent.width)
+                        model: modelData.items.map(c => ({label: I18n.t(c.ru, c.en), value: c.id}))
+                        placeholder: I18n.t(modelData.ru, modelData.en)
+                        currentValue: page.category
+                        onActivated: v => page.category = v
+                    }
+                }
+            }
+
             PxGroup {
                 width: parent.width
-                title: "Установленные плагины (" + Plugins.plugins.length + ")"
+                title: "Установленные плагины (" + page.installedEntries.length + " / " + Plugins.plugins.length + ")"
                 icon: "plug"
 
                 Repeater {
-                    model: Plugins.plugins
+                    model: page.installedEntries
                     Cards.InstalledPluginCard {
                         required property int index
                         property int rowIndex: index
-                        entry: Plugins.plugins[rowIndex]
+                        entry: page.installedEntries[rowIndex]
                         onShowDetails: entry => page.selectedInstalled = entry
                     }
                 }
@@ -125,24 +149,9 @@ Column {
                     dim: true
                 }
                 PxText {
-                    visible: !Plugins.scanning && Plugins.plugins.length === 0
-                    text: "Установленных плагинов нет."
+                    visible: !Plugins.scanning && page.installedEntries.length === 0
+                    text: Plugins.plugins.length === 0 ? "Установленных плагинов нет." : "Установленных плагинов в этой категории или поиске нет."
                     dim: true
-                }
-            }
-
-            Flow {
-                width: parent.width
-                spacing: Theme.u * 2
-                Repeater {
-                    model: ["All", "Widgets", "Desktop", "Bar", "Utilities", "Themes"]
-                    PxButton {
-                        required property string modelData
-                        compact: true
-                        text: modelData
-                        checked: page.category === modelData
-                        onClicked: page.category = modelData
-                    }
                 }
             }
 
@@ -329,8 +338,8 @@ Column {
 
     function matches(entry) {
         const q = page.search.trim().toLowerCase()
-        const hay = [entry.name, entry.author, entry.description, ...(entry.tags || [])].join(" ").toLowerCase()
-        return (!q || hay.includes(q)) && (page.category === "All" || String(entry.category || "").toLowerCase() === page.category.toLowerCase() || (entry.tags || []).map(t => String(t).toLowerCase()).includes(page.category.toLowerCase()))
+        const hay = Categories.searchText(entry).toLowerCase()
+        return (!q || hay.includes(q)) && Categories.matches(entry, page.category)
     }
 
     function setAutoUpdate(value) {

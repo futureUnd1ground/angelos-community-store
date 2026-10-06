@@ -28,6 +28,7 @@ class RegistryTests(unittest.TestCase):
     property alias testNext: nextInstall
     property alias testRestart: shellRestart''', 1)
             write('Registry.qml', source)
+            shutil.copyfile(ROOT / 'Categories.js', root / 'Categories.js')
             write('qmldir', 'singleton Registry 1.0 Registry.qml\n')
             write('imports/Quickshell/qmldir', 'module Quickshell\nSingleton 1.0 Singleton.qml\nsingleton Quickshell 1.0 Quickshell.qml\n')
             write('imports/Quickshell/Singleton.qml', 'import QtQuick\nItem {}')
@@ -56,7 +57,8 @@ QtObject {
     function remove(id) { removed = id }
 }''')
             matches = re.search(r'    function matches\(entry\) \{.*?\n    \}', (ROOT / 'Settings.qml').read_text(), re.S).group()
-            write('tst_registry.qml', '''import QtQuick
+            write('tst_registry.qml', '''import "Categories.js" as Categories
+import QtQuick
 import QtTest
 import qs.services
 import "."
