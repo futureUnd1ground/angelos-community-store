@@ -92,53 +92,60 @@ def install_local(source):
     return install_data(data)
 
 
+def unpack_plugin(data, root):
+    if len(data) > MAX_ARCHIVE:
+        raise ValueError("Plugin archive is too large")
+    root.mkdir()
+    with zipfile.ZipFile(__import__("io").BytesIO(data)) as zf:
+        if len(zf.infolist()) > 2000 or sum(item.file_size for item in zf.infolist()) > MAX_ARCHIVE:
+            raise ValueError("Plugin archive expands beyond allowed limits")
+        for member in zf.infolist():
+            if ".git" in Path(member.filename).parts:
+                raise ValueError("Archive contains Git internal files")
+            mode = member.external_attr >> 16
+            if __import__('stat').S_ISLNK(mode):
+                raise ValueError("Archive contains a symbolic link")
+            target = (root / member.filename).resolve()
+            if not str(target).startswith(str(root.resolve()) + os.sep):
+                raise ValueError("Archive contains an unsafe path")
+        zf.extractall(root)
+        for member in zf.infolist():
+            target = root / member.filename
+            if target.is_file():
+                target.chmod(target.stat().st_mode | ((member.external_attr >> 16) & 0o111))
+    manifests = list(root.glob("manifest.json")) + list(root.glob("*/manifest.json"))
+    if len(manifests) != 1:
+        raise ValueError("Archive must contain one manifest.json")
+    source_dir = manifests[0].parent
+    try:
+        manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError("Invalid manifest: " + str(exc))
+    if not isinstance(manifest, dict):
+        raise ValueError("Invalid plugin manifest")
+    plugin_id = manifest.get("id")
+    version = manifest.get("version")
+    if not isinstance(plugin_id, str) or not ID.fullmatch(plugin_id):
+        raise ValueError("Invalid manifest id")
+    if not isinstance(version, str) or not version.strip():
+        raise ValueError("Manifest version is required")
+    if not isinstance(manifest.get("name"), str) or not manifest["name"].strip():
+        raise ValueError("Manifest name is required")
+    return source_dir, manifest
+
+
 def install_data(data, expected_id=None, expected_version=None, locked=False):
     if len(data) > MAX_ARCHIVE:
         return fail("Plugin archive is too large")
     parent = Path.home() / ".config/angelos/plugins"
     parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".community-store-", dir=parent) as work:
-        archive = Path(work) / "plugin.zip"
-        archive.write_bytes(data)
-        root = Path(work) / "unpacked"
-        root.mkdir()
-        with zipfile.ZipFile(archive) as zf:
-            if len(zf.infolist()) > 2000 or sum(item.file_size for item in zf.infolist()) > MAX_ARCHIVE:
-                return fail("Plugin archive expands beyond allowed limits")
-            for member in zf.infolist():
-                mode = member.external_attr >> 16
-                if __import__('stat').S_ISLNK(mode):
-                    return fail("Archive contains a symbolic link")
-                target = (root / member.filename).resolve()
-                if not str(target).startswith(str(root.resolve()) + os.sep):
-                    return fail("Archive contains an unsafe path")
-            zf.extractall(root)
-            for member in zf.infolist():
-                target = root / member.filename
-                if target.is_file():
-                    target.chmod(target.stat().st_mode | ((member.external_attr >> 16) & 0o111))
-        manifests = list(root.glob("manifest.json")) + list(root.glob("*/manifest.json"))
-        if len(manifests) != 1:
-            return fail("Archive must contain one manifest.json")
-        source_dir = manifests[0].parent
-        try:
-            manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            return fail("Invalid manifest: " + str(exc))
-        if not isinstance(manifest, dict):
-            return fail("Invalid plugin manifest")
-        plugin_id = manifest.get("id")
-        version = manifest.get("version")
-        if not isinstance(plugin_id, str) or not ID.fullmatch(plugin_id):
-            return fail("Invalid manifest id")
-        if not isinstance(version, str) or not version.strip():
-            return fail("Manifest version is required")
+        source_dir, manifest = unpack_plugin(data, Path(work) / "unpacked")
+        plugin_id, version = manifest["id"], manifest["version"]
         if expected_id is not None and plugin_id != expected_id:
             return fail("Manifest id does not match registry")
         if expected_version is not None and version != expected_version:
             return fail("Manifest version does not match registry")
-        if not isinstance(manifest.get("name"), str) or not manifest["name"].strip():
-            return fail("Manifest name is required")
         # For local ZIPs discover the ID from the already validated archive, then
         # use the same per-plugin lock as registry installs before any replacement.
         with contextlib.ExitStack() as stack:

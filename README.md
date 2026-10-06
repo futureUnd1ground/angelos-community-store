@@ -159,3 +159,13 @@ Story example: `"category": "Story", "tags": ["story", "novel", "dialogue", "cha
 Open “Установить из ZIP” in Community Store settings, drop one ready plugin ZIP onto the field and click “Установить ZIP”. An absolute file path can also be pasted manually. The ID and version come from `manifest.json` at the archive root or inside a single plugin folder. AngelOS restarts the shell after successful installation to load the plugin components.
 
 Local installation works offline and shares archive size/path/symlink checks, per-plugin locking, backups and rollback with registry installation. Terminal usage: `python3 scripts/community-store.py install-local /path/plugin.zip`.
+
+## Publish a ZIP to Market
+
+Use “Опубликовать ZIP в Market” beside the same ZIP field. Git, GitHub CLI and authentication (`gh auth login --web`, available through the GitHub login button) are required. Credentials remain managed by gh, not plugin settings. The manifest must include description, a version such as 1.0.0 and existing declared entry-point files.
+
+The button creates a public `angelos-<id>` repository under the signed-in account, or uses the author's repository declared in the manifest. It publishes a source snapshot and ZIP release and creates a registry PR targeting main with pending status. The returned PR link opens from the settings page. Moderator review is required before catalog visibility.
+
+Identical ZIP retries reuse releases and PRs. Changed bytes require a new version. Foreign IDs/repositories, private repositories, missing entry points and unsafe archives are rejected. Partial GitHub progress is retained for retry; existing source branches are not overwritten.
+
+The separate Community Search plugin searches this catalog through the native launcher: `market`, `market dog`, `market publish`. Results open the relevant store card; publication opens the ZIP field.
