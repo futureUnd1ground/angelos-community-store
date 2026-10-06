@@ -48,6 +48,99 @@ Column {
 
             PxGroup {
                 width: parent.width
+                title: "Установить из ZIP"
+                icon: "package"
+
+                PxBox {
+                    id: zipBox
+                    width: parent.width
+                    height: zipContent.implicitHeight + Theme.u * 12
+                    color: zipDrop.containsDrag ? Theme.faceAlt : Theme.sunken
+                    Column {
+                        id: zipContent
+                        x: Theme.u * 6
+                        y: Theme.u * 6
+                        width: parent.width - Theme.u * 12
+                        spacing: Theme.u * 3
+                        PxText {
+                            width: parent.width
+                            text: zipDrop.containsDrag ? "Отпусти ZIP здесь" : "Перетащи сюда ZIP-архив плагина"
+                            wrapMode: Text.Wrap
+                        }
+                        PxField {
+                            width: parent.width
+                            text: page.archiveInput
+                            placeholder: "/путь/к/плагину.zip"
+                            enabled: !Registry.busy && !Publisher.busy
+                            onEdited: page.archiveInput = text
+                        }
+                    }
+                    Cards.ZipDropArea {
+                        id: zipDrop
+                        anchors.fill: parent
+                        enabled: !Registry.busy && !Publisher.busy
+                        onFileSelected: url => {
+                            page.archiveInput = url
+                            page.operationMessage = "Архив выбран. Нажми «Установить ZIP»."
+                        }
+                        onRejected: message => page.operationMessage = message
+                    }
+                }
+                PxButton {
+                    compact: true
+                    icon: "download"
+                    text: Registry.status === "installing" ? "Установка…" : "Установить ZIP"
+                    enabled: !Registry.busy && !Publisher.busy && page.archiveInput.trim() !== ""
+                    onClicked: Registry.installLocal(page.archiveInput)
+                }
+                PxText {
+                    width: parent.width
+                    text: "Публикация загрузит ZIP и исходники в публичный GitHub Release и создаст заявку в Market. Плагин появится в каталоге после одобрения."
+                    dim: true
+                    wrapMode: Text.Wrap
+                }
+                PxText {
+                    width: parent.width
+                    text: Publisher.error || Publisher.message || (Publisher.login ? "GitHub: @" + Publisher.login : "Войди в GitHub для публикации")
+                    color: Publisher.error ? Theme.danger : Theme.textDim
+                    wrapMode: Text.Wrap
+                }
+                Flow {
+                    width: parent.width
+                    spacing: Theme.u * 2
+                    PxButton {
+                        compact: true
+                        text: Publisher.busy ? "Публикация…" : "Опубликовать ZIP в Market"
+                        icon: "cloud"
+                        enabled: !Registry.busy && !Publisher.busy && page.archiveInput.trim() !== ""
+                        onClicked: Publisher.publish(page.archiveInput)
+                    }
+                    PxButton {
+                        compact: true
+                        text: "Войти в GitHub"
+                        icon: "external"
+                        visible: !Publisher.login
+                        enabled: !Publisher.busy
+                        onClicked: Shell.exec(Shell.terminalArgv(["gh", "auth", "login", "--web"]))
+                    }
+                    PxButton {
+                        compact: true
+                        text: "Проверить вход"
+                        enabled: !Publisher.busy
+                        onClicked: Publisher.checkAuth()
+                    }
+                    PxButton {
+                        compact: true
+                        text: "Открыть заявку"
+                        visible: Publisher.prUrl !== ""
+                        icon: "external"
+                        onClicked: Quickshell.execDetached(["xdg-open", Publisher.prUrl])
+                    }
+                }
+            }
+
+            PxGroup {
+                width: parent.width
                 title: "Настройки Community Store"
                 icon: "settings"
 
@@ -174,55 +267,6 @@ Column {
                     visible: !Registry.busy && page.availableEntries.length === 0
                     text: Registry.error ? "Не удалось загрузить registry." : "Плагины не найдены."
                     dim: true
-                }
-            }
-
-            PxGroup {
-                width: parent.width
-                title: "Установить из ZIP"
-                icon: "package"
-
-                PxBox {
-                    id: zipBox
-                    width: parent.width
-                    height: zipContent.implicitHeight + Theme.u * 12
-                    color: zipDrop.containsDrag ? Theme.faceAlt : Theme.sunken
-                    Column {
-                        id: zipContent
-                        x: Theme.u * 6
-                        y: Theme.u * 6
-                        width: parent.width - Theme.u * 12
-                        spacing: Theme.u * 3
-                        PxText {
-                            width: parent.width
-                            text: zipDrop.containsDrag ? "Отпусти ZIP здесь" : "Перетащи сюда ZIP-архив плагина"
-                            wrapMode: Text.Wrap
-                        }
-                        PxField {
-                            width: parent.width
-                            text: page.archiveInput
-                            placeholder: "/путь/к/плагину.zip"
-                            enabled: !Registry.busy
-                            onEdited: page.archiveInput = text
-                        }
-                    }
-                    Cards.ZipDropArea {
-                        id: zipDrop
-                        anchors.fill: parent
-                        enabled: !Registry.busy
-                        onFileSelected: url => {
-                            page.archiveInput = url
-                            page.operationMessage = "Архив выбран. Нажми «Установить ZIP»."
-                        }
-                        onRejected: message => page.operationMessage = message
-                    }
-                }
-                PxButton {
-                    compact: true
-                    icon: "download"
-                    text: Registry.status === "installing" ? "Установка…" : "Установить ZIP"
-                    enabled: !Registry.busy && page.archiveInput.trim() !== ""
-                    onClicked: Registry.installLocal(page.archiveInput)
                 }
             }
 
@@ -371,8 +415,20 @@ Column {
         onTriggered: page.confirmingSelectedRemove = false
     }
 
+    function openMenuTarget() {
+        const id = String(Shell.settingsSub || "")
+        if (id && id !== "publish") {
+            page.search = id
+            page.selected = Registry.entries.find(entry => entry.id === id) || null
+        }
+    }
+    Connections {
+        target: Shell
+        function onSettingsSubChanged() { page.openMenuTarget() }
+    }
     Connections {
         target: Registry
+        function onChanged() { page.openMenuTarget() }
         function onOperationFinished(ok, message) {
             page.operationMessage = message || (ok ? "Operation completed." : "Operation failed.")
         }
@@ -380,10 +436,13 @@ Column {
 
     Component.onCompleted: {
         page.registryInput = plugin ? plugin.get("registryUrl", Registry.defaultUrl) : Registry.defaultUrl
+        Publisher.plugin = plugin
+        Publisher.checkAuth()
         Registry.plugin = plugin
         Registry.url = page.registryInput
         Registry.fetch()
         Registry.setAutoUpdate(page.autoUpdate)
+        page.openMenuTarget()
     }
 
     function matches(entry) {

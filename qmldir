@@ -1,2 +1,3 @@
 module CommunityStore
 singleton Registry 1.0 services/Registry.qml
+singleton Publisher 1.0 services/Publisher.qml

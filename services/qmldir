@@ -1,1 +1,2 @@
 singleton Registry 1.0 Registry.qml
+singleton Publisher 1.0 Publisher.qml

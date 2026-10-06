@@ -1,13 +1,29 @@
 {
   "id": "community-store",
   "name": "Community Store",
-  "version": "0.8.1",
+  "version": "0.9.2",
   "author": "AngelOS community",
-  "description": "Find, install, update and remove community plugins.",
+  "description": "Find, install, update and publish community plugins from ZIP.",
   "icon": "package",
   "enabledByDefault": true,
   "settings": "Settings.qml",
   "main": "Main.qml",
   "launcher": "Launcher.qml",
-  "repository": "https://github.com/futureUnd1ground/angelos-community-store"
+  "repository": "https://github.com/futureUnd1ground/angelos-community-store",
+  "category": "Utilities",
+  "tags": [
+    "utility",
+    "plugins",
+    "store",
+    "market",
+    "publish"
+  ],
+  "dependencies": [
+    "Python 3.10+",
+    "Git and GitHub CLI for ZIP publication"
+  ],
+  "permissions": [
+    "HTTPS access to plugin registry and releases",
+    "GitHub repository, release and pull-request writes when publishing"
+  ]
 }
