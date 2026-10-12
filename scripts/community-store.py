@@ -129,8 +129,13 @@ def unpack_plugin(data, root):
         raise ValueError("Invalid manifest id")
     if not isinstance(version, str) or not version.strip():
         raise ValueError("Manifest version is required")
-    if not isinstance(manifest.get("name"), str) or not manifest["name"].strip():
-        raise ValueError("Manifest name is required")
+    name = manifest.get("name")
+    valid_name = isinstance(name, str) and bool(name.strip())
+    if isinstance(name, dict):
+        valid_name = bool(name) and any(k in name for k in ("ru", "en")) and all(
+            isinstance(k, str) and isinstance(v, str) and bool(v.strip()) for k, v in name.items())
+    if not valid_name:
+        raise ValueError("Manifest name must be a nonempty string or localized ru/en label")
     return source_dir, manifest
 
 
