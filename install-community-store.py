@@ -12,7 +12,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-RELEASE_URL = "https://github.com/futureUnd1ground/angelos-community-store/releases/download/v0.9.2/community-store-v0.9.2.zip"
+RELEASE_URL = "https://github.com/futureUnd1ground/angelos-community-store/releases/download/v0.9.3/community-store-v0.9.3.zip"
 MAX_ARCHIVE = 64 * 1024 * 1024
 TARGET = Path.home() / ".config/angelos/plugins/community-store"
 LAUNCHER = Path.home() / ".local/bin/community-store"
