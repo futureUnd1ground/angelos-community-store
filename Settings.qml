@@ -5,6 +5,7 @@ import qs.widgets
 import qs.services
 import "services"
 import "components" as Cards
+import "Categories.js" as Categories
 
 // PluginSettingsPage already provides the outer PxPage. Plugin settings must
 // therefore be a normal item with an implicit height.
@@ -15,6 +16,7 @@ Column {
     property string search: ""
     property string category: "All"
     property string registryInput: ""
+    property string archiveInput: ""
     property var selected: null
     property var selectedInstalled: null
     property bool autoUpdate: plugin ? plugin.get("autoUpdate", false) : false
@@ -25,6 +27,7 @@ Column {
     property string operationMessage: ""
     property bool confirmingSelectedRemove: false
     readonly property var availableEntries: Registry.entries.filter(page.matches)
+    readonly property var installedEntries: Plugins.plugins.filter(entry => page.matches(Object.assign({}, entry, Registry.entries.find(r => r.id === entry.id) || {})))
 
     width: parent ? parent.width : Theme.u * 150
     spacing: Theme.u * 5
@@ -42,6 +45,99 @@ Column {
             scale: page.interfaceScale
             transformOrigin: Item.TopLeft
             spacing: Theme.u * 5
+
+            PxGroup {
+                width: parent.width
+                title: "Установить из ZIP"
+                icon: "package"
+
+                PxBox {
+                    id: zipBox
+                    width: parent.width
+                    height: zipContent.implicitHeight + Theme.u * 12
+                    color: zipDrop.containsDrag ? Theme.faceAlt : Theme.sunken
+                    Column {
+                        id: zipContent
+                        x: Theme.u * 6
+                        y: Theme.u * 6
+                        width: parent.width - Theme.u * 12
+                        spacing: Theme.u * 3
+                        PxText {
+                            width: parent.width
+                            text: zipDrop.containsDrag ? "Отпусти ZIP здесь" : "Перетащи сюда ZIP-архив плагина"
+                            wrapMode: Text.Wrap
+                        }
+                        PxField {
+                            width: parent.width
+                            text: page.archiveInput
+                            placeholder: "/путь/к/плагину.zip"
+                            enabled: !Registry.busy && !Publisher.busy
+                            onEdited: page.archiveInput = text
+                        }
+                    }
+                    Cards.ZipDropArea {
+                        id: zipDrop
+                        anchors.fill: parent
+                        enabled: !Registry.busy && !Publisher.busy
+                        onFileSelected: url => {
+                            page.archiveInput = url
+                            page.operationMessage = "Архив выбран. Нажми «Установить ZIP»."
+                        }
+                        onRejected: message => page.operationMessage = message
+                    }
+                }
+                PxButton {
+                    compact: true
+                    icon: "download"
+                    text: Registry.status === "installing" ? "Установка…" : "Установить ZIP"
+                    enabled: !Registry.busy && !Publisher.busy && page.archiveInput.trim() !== ""
+                    onClicked: Registry.installLocal(page.archiveInput)
+                }
+                PxText {
+                    width: parent.width
+                    text: "Публикация загрузит ZIP и исходники в публичный GitHub Release и создаст заявку в Market. Плагин появится в каталоге после одобрения."
+                    dim: true
+                    wrapMode: Text.Wrap
+                }
+                PxText {
+                    width: parent.width
+                    text: Publisher.error || Publisher.message || (Publisher.login ? "GitHub: @" + Publisher.login : "Войди в GitHub для публикации")
+                    color: Publisher.error ? Theme.danger : Theme.textDim
+                    wrapMode: Text.Wrap
+                }
+                Flow {
+                    width: parent.width
+                    spacing: Theme.u * 2
+                    PxButton {
+                        compact: true
+                        text: Publisher.busy ? "Публикация…" : "Опубликовать ZIP в Market"
+                        icon: "cloud"
+                        enabled: !Registry.busy && !Publisher.busy && page.archiveInput.trim() !== ""
+                        onClicked: Publisher.publish(page.archiveInput)
+                    }
+                    PxButton {
+                        compact: true
+                        text: "Войти в GitHub"
+                        icon: "external"
+                        visible: !Publisher.login
+                        enabled: !Publisher.busy
+                        onClicked: Shell.exec(Shell.terminalArgv(["gh", "auth", "login", "--web"]))
+                    }
+                    PxButton {
+                        compact: true
+                        text: "Проверить вход"
+                        enabled: !Publisher.busy
+                        onClicked: Publisher.checkAuth()
+                    }
+                    PxButton {
+                        compact: true
+                        text: "Открыть заявку"
+                        visible: Publisher.prUrl !== ""
+                        icon: "external"
+                        onClicked: Quickshell.execDetached(["xdg-open", Publisher.prUrl])
+                    }
+                }
+            }
 
             PxGroup {
                 width: parent.width
@@ -105,17 +201,39 @@ Column {
                 onEdited: page.search = text
             }
 
+            Flow {
+                width: parent.width
+                spacing: Theme.u * 2
+                PxButton {
+                    compact: true
+                    text: I18n.t("Все", "All")
+                    checked: page.category === "All"
+                    onClicked: page.category = "All"
+                }
+                Repeater {
+                    model: Categories.groups(Registry.entries)
+                    PxCombo {
+                        required property var modelData
+                        width: Math.min(Theme.u * 100, parent.width)
+                        model: modelData.items.map(c => ({label: I18n.t(c.ru, c.en), value: c.id}))
+                        placeholder: I18n.t(modelData.ru, modelData.en)
+                        currentValue: page.category
+                        onActivated: v => page.category = v
+                    }
+                }
+            }
+
             PxGroup {
                 width: parent.width
-                title: "Установленные плагины (" + Plugins.plugins.length + ")"
+                title: "Установленные плагины (" + page.installedEntries.length + " / " + Plugins.plugins.length + ")"
                 icon: "plug"
 
                 Repeater {
-                    model: Plugins.plugins
+                    model: page.installedEntries
                     Cards.InstalledPluginCard {
                         required property int index
                         property int rowIndex: index
-                        entry: Plugins.plugins[rowIndex]
+                        entry: page.installedEntries[rowIndex]
                         onShowDetails: entry => page.selectedInstalled = entry
                     }
                 }
@@ -125,24 +243,9 @@ Column {
                     dim: true
                 }
                 PxText {
-                    visible: !Plugins.scanning && Plugins.plugins.length === 0
-                    text: "Установленных плагинов нет."
+                    visible: !Plugins.scanning && page.installedEntries.length === 0
+                    text: Plugins.plugins.length === 0 ? "Установленных плагинов нет." : "Установленных плагинов в этой категории или поиске нет."
                     dim: true
-                }
-            }
-
-            Flow {
-                width: parent.width
-                spacing: Theme.u * 2
-                Repeater {
-                    model: ["All", "Widgets", "Desktop", "Bar", "Utilities", "Themes"]
-                    PxButton {
-                        required property string modelData
-                        compact: true
-                        text: modelData
-                        checked: page.category === modelData
-                        onClicked: page.category = modelData
-                    }
                 }
             }
 
@@ -312,8 +415,20 @@ Column {
         onTriggered: page.confirmingSelectedRemove = false
     }
 
+    function openMenuTarget() {
+        const id = String(Shell.settingsSub || "")
+        if (id && id !== "publish") {
+            page.search = id
+            page.selected = Registry.entries.find(entry => entry.id === id) || null
+        }
+    }
+    Connections {
+        target: Shell
+        function onSettingsSubChanged() { page.openMenuTarget() }
+    }
     Connections {
         target: Registry
+        function onChanged() { page.openMenuTarget() }
         function onOperationFinished(ok, message) {
             page.operationMessage = message || (ok ? "Operation completed." : "Operation failed.")
         }
@@ -321,16 +436,19 @@ Column {
 
     Component.onCompleted: {
         page.registryInput = plugin ? plugin.get("registryUrl", Registry.defaultUrl) : Registry.defaultUrl
+        Publisher.plugin = plugin
+        Publisher.checkAuth()
         Registry.plugin = plugin
         Registry.url = page.registryInput
         Registry.fetch()
         Registry.setAutoUpdate(page.autoUpdate)
+        page.openMenuTarget()
     }
 
     function matches(entry) {
         const q = page.search.trim().toLowerCase()
-        const hay = [entry.name, entry.author, entry.description, ...(entry.tags || [])].join(" ").toLowerCase()
-        return (!q || hay.includes(q)) && (page.category === "All" || String(entry.category || "").toLowerCase() === page.category.toLowerCase() || (entry.tags || []).map(t => String(t).toLowerCase()).includes(page.category.toLowerCase()))
+        const hay = Categories.searchText(entry).toLowerCase()
+        return (!q || hay.includes(q)) && Categories.matches(entry, page.category)
     }
 
     function setAutoUpdate(value) {

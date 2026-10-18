@@ -1,5 +1,17 @@
 # AngelOS Community Store
 
+Release 0.9.4 includes the existing ZIP publishing, drag-and-drop install and
+category features, and verifies registry SHA-256 digests in both GUI and TUI
+installations. An incorrect digest leaves the installed plugin unchanged.
+Entries without a digest remain compatible with older registry listings.
+
+**Touchpad Flex** is available in the community registry: install it from the
+catalog and open Settings → Plugins → Гибкий тачпад. It adds editable profiles,
+pointer/scroll tuning and gesture assignments using native AngelOS services.
+Plugin code runs with the logged-in user's permissions; it can use Quickshell
+Process, FileView and IPC directly. Administrative operations use normal system
+authentication. Declare these capabilities in manifest and registry permissions.
+
 [Русская версия](README.ru.md) | English
 
 An independent AngelOS plugin that uses the native plugin directory and
@@ -111,3 +123,61 @@ including built-in and user plugins. From a row you can enable or disable the
 plugin, open its details or directory, and remove a user plugin. Built-in
 plugins are hidden using AngelOS's native remove behavior; their files remain
 part of the AngelOS installation.
+
+## AngelOS categories
+
+Market 0.8.0 groups filters into Story & games, Appearance, and Plugins & tools. The taxonomy follows AngelOS's existing realms and circles, visual novel, characters, scenes and voices, alongside palettes, skins, wallpapers, cursors, fonts, icons and effects.
+
+| `category` | Store label |
+| --- | --- |
+| `Story` | Story |
+| `Novels` | Visual novels |
+| `Quests` | Quests |
+| `Characters` | Characters |
+| `Realms` | Worlds & realms |
+| `Dialogue` | Dialogue & scenes |
+| `Minigames` | Minigames |
+| `Voices` | Voices |
+| `Pets` | Pets |
+| `Widgets` | Widgets |
+| `Desktop` | Desktop |
+| `Bar` | Bar |
+| `Themes` | Themes |
+| `Skins` | Interface skins |
+| `Wallpapers` | Wallpapers |
+| `Cursors` | Cursors |
+| `Fonts` | Fonts |
+| `Icons` | Icons |
+| `Effects` | Effects & animations |
+| `AI` | AI assistants |
+| `DeveloperTools` | Developer tools |
+| `Launcher` | Launcher & search |
+| `Network` | Network |
+| `Audio` | Music & audio |
+| `Productivity` | Productivity |
+| `Integrations` | Integrations |
+| `Accessibility` | Accessibility |
+| `System` | System |
+| `Utilities` | Utilities |
+
+Use one primary category ID and tags for other applicable filters. The registry uses stable English IDs; Store translates their labels. Legacy categories and tags remain supported, including Worlds, Narrative, Lore and story-packs. Unknown categories are listed automatically under Plugins & tools.
+
+Story collects stories, novels, quests, characters, realms, dialogue and voices. Ordinary pets and minigames require an explicit story tag to enter that filter. Themes collects appearance subcategories. Search supports both Russian and English category labels.
+
+Story example: `"category": "Story", "tags": ["story", "novel", "dialogue", "characters", "heaven"]`. Appearance example: `"category": "Skins", "tags": ["skins", "themes", "fonts", "cursor"]`. Category metadata does not load story content into the engine; plugin authors must implement integration through AngelOS's supported APIs and document compatibility and dependencies.
+
+## Install a local ZIP
+
+Open “Установить из ZIP” in Community Store settings, drop one ready plugin ZIP onto the field and click “Установить ZIP”. An absolute file path can also be pasted manually. The ID and version come from `manifest.json` at the archive root or inside a single plugin folder. AngelOS restarts the shell after successful installation to load the plugin components.
+
+Local installation works offline and shares archive size/path/symlink checks, per-plugin locking, backups and rollback with registry installation. Terminal usage: `python3 scripts/community-store.py install-local /path/plugin.zip`.
+
+## Publish a ZIP to Market
+
+Use “Опубликовать ZIP в Market” beside the same ZIP field. Git, GitHub CLI and authentication (`gh auth login --web`, available through the GitHub login button) are required. Credentials remain managed by gh, not plugin settings. The manifest must include description, a version such as 1.0.0 and existing declared entry-point files.
+
+The button creates a public `angelos-<id>` repository under the signed-in account, or uses the author's repository declared in the manifest. It publishes a source snapshot and ZIP release and creates a registry PR targeting main with pending status. The returned PR link opens from the settings page. Moderator review is required before catalog visibility.
+
+Identical ZIP retries reuse releases and PRs. Changed bytes require a new version. Foreign IDs/repositories, private repositories, missing entry points and unsafe archives are rejected. Partial GitHub progress is retained for retry; existing source branches are not overwritten.
+
+The separate Community Search plugin searches this catalog through the native launcher: `market`, `market dog`, `market publish`. Results open the relevant store card; publication opens the ZIP field.

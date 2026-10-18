@@ -126,7 +126,7 @@ def plugin_rows(entries):
 
 def install(row):
     entry = row["entry"]
-    result = subprocess.run([sys.executable, str(HELPER), "install", entry.get("source", ""), entry["id"], str(entry.get("version", ""))], capture_output=True, text=True)
+    result = subprocess.run([sys.executable, str(HELPER), "install", entry.get("source", ""), entry["id"], str(entry.get("version", "")), entry.get("sha256", "")], capture_output=True, text=True)
     if result.returncode:
         raise RuntimeError(result.stderr.strip() or "Install failed")
     return result.stdout.strip()

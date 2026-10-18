@@ -28,6 +28,7 @@ class RegistryTests(unittest.TestCase):
     property alias testNext: nextInstall
     property alias testRestart: shellRestart''', 1)
             write('Registry.qml', source)
+            shutil.copyfile(ROOT / 'Categories.js', root / 'Categories.js')
             write('qmldir', 'singleton Registry 1.0 Registry.qml\n')
             write('imports/Quickshell/qmldir', 'module Quickshell\nSingleton 1.0 Singleton.qml\nsingleton Quickshell 1.0 Quickshell.qml\n')
             write('imports/Quickshell/Singleton.qml', 'import QtQuick\nItem {}')
@@ -56,7 +57,8 @@ QtObject {
     function remove(id) { removed = id }
 }''')
             matches = re.search(r'    function matches\(entry\) \{.*?\n    \}', (ROOT / 'Settings.qml').read_text(), re.S).group()
-            write('tst_registry.qml', '''import QtQuick
+            write('tst_registry.qml', '''import "Categories.js" as Categories
+import QtQuick
 import QtTest
 import qs.services
 import "."
@@ -149,6 +151,20 @@ MATCHES
         verify(Registry.testFetcher.running)
         verify(!Registry.install(Registry.entries[0]))
         verify(!Registry.testInstaller.running)
+    }
+    function test_local_install_command_and_busy_guard() {
+        verify(Registry.installLocal("file:///tmp/plugin%20name.zip"))
+        compare(Registry.testInstaller.command, ["python3", "/test/scripts/community-store.py", "install-local", "file:///tmp/plugin%20name.zip"])
+        verify(!Registry.installLocal("file:///tmp/second.zip"))
+        complete(0, "Installed local-plugin 1.0.0")
+        verify(Registry.testRestart.running)
+    }
+    function test_local_failure_and_empty_source() {
+        verify(!Registry.installLocal("  "))
+        verify(Registry.installLocal("/tmp/broken.zip"))
+        complete(1, "Invalid manifest")
+        compare(Registry.error, "Invalid manifest")
+        verify(!Registry.testRestart.running)
     }
     function test_category_uses_registry_field() {
         page.category = "Widgets"
